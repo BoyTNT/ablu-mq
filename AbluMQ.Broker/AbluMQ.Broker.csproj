@@ -40,9 +40,10 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Endpoint.cs" />
+    <Compile Include="Session.cs" />
     <Compile Include="MessageBroker.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="SessionType.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AbluMQ.ClientLib\AbluMQ.ClientLib.csproj">

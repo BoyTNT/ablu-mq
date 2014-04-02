@@ -1,49 +1,46 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
-namespace AbluMQ.ClientLib
+using AbluMQ.ClientLib;
+
+namespace AbluMQ.Broker
 {
-	public delegate void ReceiveMessageDelegate(MessageReceivedEventArgs e);
-	public delegate void LoseConnectionDelegate();
+	public delegate void ReceiveMessageDelegate(string name, Message message);
+	public delegate void LoseConnectionDelegate(string name, string innerName);
 
-	public class Receiver
+	public class Session
 	{
-		private TcpClient m_Client;
-		private NetworkStream m_Stream;
-
 		public string Name { get; private set; }
+		public string InnerName { get; private set; }
+		public SessionType Type { get; private set; }
+		public string CurrentSessionId { get; set; }
 		public event ReceiveMessageDelegate OnReceiveMessage;
 		public event LoseConnectionDelegate OnLoseConnection;
 
-		public Receiver(string name)
+		private TcpClient m_Client;
+		private NetworkStream m_Stream;
+
+		public Session(string name, SessionType type, TcpClient client)
 		{
 			this.Name = name;
-			m_Client = new TcpClient();
-			m_Client.NoDelay = true;
+			this.InnerName = Guid.NewGuid().ToString("N");		//Generate inner name
+			this.Type = type;
+
+			m_Client = client;
+			m_Stream = client.GetStream();
 		}
 
 		/// <summary>
-		/// Connect to Broker
+		/// Start receiving messages
 		/// </summary>
-		/// <param name="host"></param>
-		/// <param name="port"></param>
-		public void Connect(string host, int port)
+		public void Start()
 		{
 			try
 			{
-				m_Client.Connect(host, port);
-				m_Stream = m_Client.GetStream();
-
-				//Login
-				var message = new Message();
-				message.Type = MessageType.ClientLogin;
-				message.Source = this.Name;
-				message.Target = string.Empty;
-				message.WriteTo(m_Stream);
-
 				//Begin reading
 				var lengthBytes = new byte[4];
 				m_Stream.BeginRead(lengthBytes, 0, lengthBytes.Length, new AsyncCallback(ReadCallback), lengthBytes);
@@ -52,7 +49,7 @@ namespace AbluMQ.ClientLib
 		}
 
 		/// <summary>
-		/// Disconnect from Broker
+		/// Close the socket
 		/// </summary>
 		public void Close()
 		{
@@ -61,6 +58,18 @@ namespace AbluMQ.ClientLib
 				m_Client.Close();
 			}
 			catch { }
+		}
+
+		/// <summary>
+		/// Serialize the message and write to stream
+		/// </summary>
+		/// <param name="message"></param>
+		public void WriteMessage(Message message)
+		{
+			lock(m_Client)
+			{
+				message.WriteTo(m_Stream);
+			}
 		}
 
 		private void ReadCallback(IAsyncResult result)
@@ -75,12 +84,9 @@ namespace AbluMQ.ClientLib
 					//Read the full message
 					var message = Message.Read(m_Stream, lengthBytes, totalRead);
 
-					//Pass to handler
+					//Pass to Broker
 					if(OnReceiveMessage != null)
-					{
-						var args = new MessageReceivedEventArgs(m_Stream, message);
-						OnReceiveMessage(args);
-					}
+						OnReceiveMessage(this.Name, message);
 
 					//Read again
 					Array.Clear(lengthBytes, 0, lengthBytes.Length);
@@ -88,16 +94,16 @@ namespace AbluMQ.ClientLib
 				}
 				else
 				{
-					//Connection closed, notify handler
+					//Client offline, notify Broker
 					if(OnLoseConnection != null)
-						OnLoseConnection();
+						OnLoseConnection(this.Name, this.InnerName);
 				}
 			}
 			catch
 			{
-				//Connection broken, notify handler
+				//Client offline, notify Broker
 				if(OnLoseConnection != null)
-					OnLoseConnection();
+					OnLoseConnection(this.Name, this.InnerName);
 			}
 		}
 	}

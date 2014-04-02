@@ -16,7 +16,9 @@ namespace AbluMQ.ClientLib
 
 		public Sender()
 		{
-
+			this.Name = Guid.NewGuid().ToString("N");
+			m_Client = new TcpClient();
+			m_Client.NoDelay = true;
 		}
 
 		/// <summary>
@@ -26,7 +28,18 @@ namespace AbluMQ.ClientLib
 		/// <param name="port"></param>
 		public void Connect(string host, int port)
 		{
+			try
+			{
+				m_Client.Connect(host, port);
+				m_Stream = m_Client.GetStream();
 
+				var message = new Message();
+				message.Type = MessageType.ClientLogin;
+				message.Source = this.Name;
+				message.Target = string.Empty;
+				message.WriteTo(m_Stream);
+			}
+			catch { }
 		}
 
 		/// <summary>
@@ -34,7 +47,11 @@ namespace AbluMQ.ClientLib
 		/// </summary>
 		public void Close()
 		{
-
+			try
+			{
+				m_Client.Close();
+			}
+			catch { }
 		}
 
 		/// <summary>
@@ -44,7 +61,16 @@ namespace AbluMQ.ClientLib
 		/// <param name="data"></param>
 		public void Notify(string target, byte[] data)
 		{
-
+			try
+			{
+				var message = new Message();
+				message.Type = MessageType.Notify;
+				message.Source = this.Name;
+				message.Target = target;
+				message.Data = data;
+				message.WriteTo(m_Stream);
+			}
+			catch { }
 		}
 
 		/// <summary>
