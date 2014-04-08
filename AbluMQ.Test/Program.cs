@@ -20,27 +20,34 @@ namespace AbluMQ.Test
 				return;
 			}
 
-			switch(args[0].ToUpper())
+			try
 			{
-				case "BROKER":
-					RunBroker(args);
-					break;
+				switch(args[0].ToUpper())
+				{
+					case "BROKER":
+						RunBroker(args);
+						break;
 
-				case "ROUTE":
-					RunRouteBroker(args);
-					break;
+					case "ROUTE":
+						RunRouteBroker(args);
+						break;
 
-				case "SENDER":
-					RunSender(args);
-					break;
+					case "SENDER":
+						RunSender(args);
+						break;
 
-				case "RECEIVER":
-					RunReceiver(args);
-					break;
+					case "RECEIVER":
+						RunReceiver(args);
+						break;
 
-				default:
-					Console.WriteLine("Error");
-					break;
+					default:
+						Console.WriteLine("Error");
+						break;
+				}
+			}
+			catch(Exception ex)
+			{
+				Console.WriteLine(ex.Message);
 			}
 		}
 
@@ -61,14 +68,15 @@ namespace AbluMQ.Test
 
 		private static void RunRouteBroker(string[] args)
 		{
-			//ROUTE PORT IP PORT
+			//ROUTE PORT CONN_IP CONN_PORT
+
 			int port = Convert.ToInt32(args[1]);
 			string conn_ip = args[2];
 			int conn_port = Convert.ToInt32(args[3]);
 
 			var broker = new MessageBroker(IPAddress.Any, port);
-			broker.Connect(conn_ip, conn_port);
 			broker.Start();
+			broker.Connect(conn_ip, conn_port);
 
 			Console.WriteLine("Route Service started, Enter to exit");
 			Console.ReadLine();
@@ -108,8 +116,8 @@ namespace AbluMQ.Test
 			string name = args[3];
 
 			var receiver = new Receiver(name);
-			receiver.OnLoseConnection += new ClientLib.LoseConnectionDelegate(OnLoseConnection);
-			receiver.OnReceiveMessage += new ClientLib.ReceiveMessageDelegate(OnReceiveMessage);
+			receiver.OnLoseConnection += new LoseConnectionDelegate(OnLoseConnection);
+			receiver.OnReceiveMessage += new ReceiveMessageDelegate(OnReceiveMessage);
 			receiver.Connect(ip, port);
 
 			Console.WriteLine("Waiting...");

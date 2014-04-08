@@ -37,6 +37,7 @@ namespace AbluMQ.ClientLib
 				message.Type = MessageType.ClientLogin;
 				message.Source = this.Name;
 				message.Target = string.Empty;
+				message.Path = string.Empty;
 				message.WriteTo(m_Stream);
 			}
 			catch { }

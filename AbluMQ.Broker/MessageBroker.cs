@@ -24,11 +24,13 @@ namespace AbluMQ.Broker
 		private NetworkStream m_ClientStream;
 		private ConcurrentDictionary<string, Session> m_Endpoints;
 		private ConcurrentDictionary<string, Session> m_Brokers;
-		private ConcurrentQueue<Message> m_Messages;
 		private ConcurrentDictionary<string, DateTime> m_PendingRequests;
+		private ConcurrentQueue<Message> m_Messages;
 		private Thread m_DispatchThread;
 		private Thread m_CheckOverdueThread;
 		private ManualResetEvent m_MessageArrived;
+		private string m_ParentAddress;
+		private int m_ParentPort;
 
 		public MessageBroker(IPAddress address, int port)
 		{
@@ -52,24 +54,10 @@ namespace AbluMQ.Broker
 		/// <param name="port"></param>
 		public void Connect(string address, int port)
 		{
-			try
-			{
-				//Connect to another Broker
-				m_Client.Connect(address, port);
-				m_ClientStream = m_Client.GetStream();
+			m_ParentAddress = address;
+			m_ParentPort = port;
 
-				//Login
-				var message = new Message();
-				message.Type = MessageType.BrokerLogin;
-				message.Source = m_Name;
-				message.Target = string.Empty;
-				message.WriteTo(m_ClientStream);
-
-				//Begin to read message from parent Broker
-				var lengthBytes = new byte[4];
-				m_ClientStream.BeginRead(lengthBytes, 0, lengthBytes.Length, new AsyncCallback(this.ReadCallback), lengthBytes);
-			}
-			catch { }
+			ConnectToBroker(null);
 		}
 
 		/// <summary>
@@ -100,6 +88,8 @@ namespace AbluMQ.Broker
 			try
 			{
 				m_Running = false;
+
+				m_Client.Close();
 
 				//Wait for threads exit
 				m_DispatchThread.Join(5000);
@@ -148,7 +138,7 @@ namespace AbluMQ.Broker
 							clientSession.OnLoseConnection += OnEndpointLoseConnection;
 							m_Endpoints[clientSession.Name] = clientSession;
 							clientSession.Start();
-
+							Console.WriteLine("[EP]{0} connected, {1} endpoints in queue", message.Source, m_Endpoints.Count);
 							break;
 
 						//Another broker login
@@ -158,6 +148,7 @@ namespace AbluMQ.Broker
 							brokerSession.OnLoseConnection += OnEndpointLoseConnection;
 							m_Brokers[brokerSession.Name] = brokerSession;
 							brokerSession.Start();
+							Console.WriteLine("[BROKER]{0} connected, {1} brokers in queue", message.Source, m_Brokers.Count);
 							break;
 
 						//Unrecognized message, close socket
@@ -166,7 +157,6 @@ namespace AbluMQ.Broker
 							break;
 					}
 
-					Console.WriteLine("{0} connected, {1} endpoints in queue", message.Source, m_Endpoints.Count);
 				}
 				else
 				{
@@ -174,7 +164,7 @@ namespace AbluMQ.Broker
 					client.Close();
 				}
 			}
-			catch { }
+			catch(Exception ex) { Console.WriteLine(ex); }
 		}
 
 		/// <summary>
@@ -212,9 +202,26 @@ namespace AbluMQ.Broker
 								//Deliver it to other Brokers
 								else
 								{
-									foreach(var broker in m_Brokers.Values)
+									//Avoid loop
+									if(!message.Path.Contains("/" + m_Name))
 									{
-										broker.WriteMessage(message);
+										//Add route path
+										message.Path += "/" + this.m_Name;
+
+										//To parent
+										if(m_Client.Connected)
+										{
+											lock(m_Client)
+											{
+												message.WriteTo(m_ClientStream);
+											}
+										}
+
+										//To children
+										foreach(var broker in m_Brokers.Values)
+										{
+											broker.WriteMessage(message);
+										}
 									}
 								}
 								break;
@@ -270,9 +277,23 @@ namespace AbluMQ.Broker
 					while(session == null);
 
 					session.Close();
+
+					Console.WriteLine("{0} lost connection, {1} endpoints left", name, m_Endpoints.Count);
+				}
+				else if(m_Brokers.ContainsKey(name) && m_Brokers[name].InnerName == innerName)
+				{
+					Session session = null;
+					do
+					{
+						m_Brokers.TryRemove(name, out session);
+					}
+					while(session == null);
+
+					session.Close();
+
+					Console.WriteLine("[BROKER]{0} lost connection, {1} brokers left", name, m_Brokers.Count);
 				}
 
-				Console.WriteLine("{0} lost connection, {1} endpoints left", name, m_Endpoints.Count);
 			}
 			catch { }
 		}
@@ -301,9 +322,51 @@ namespace AbluMQ.Broker
 				}
 				else
 				{
+					//Socket closed by remote, reconnect
+					if(m_Running)
+					{
+						ThreadPool.QueueUserWorkItem(new WaitCallback(ConnectToBroker));
+					}
 				}
 			}
-			catch{}
+			catch
+			{
+				//Socket broken or connect error, reconnect
+				if(m_Running)
+				{
+					ThreadPool.QueueUserWorkItem(new WaitCallback(ConnectToBroker));
+				}
+			}
+		}
+
+		private void ConnectToBroker(object obj)
+		{
+			while(!m_Client.Connected && m_Running)
+			{
+				try
+				{
+					//Connect to another Broker
+					m_Client = new TcpClient();
+					m_Client.Connect(m_ParentAddress, m_ParentPort);
+					m_ClientStream = m_Client.GetStream();
+
+					//Login
+					var message = new Message();
+					message.Type = MessageType.BrokerLogin;
+					message.Source = m_Name;
+					message.Target = string.Empty;
+					message.WriteTo(m_ClientStream);
+
+					//Begin to read message from parent Broker
+					var lengthBytes = new byte[4];
+					m_ClientStream.BeginRead(lengthBytes, 0, lengthBytes.Length, new AsyncCallback(this.ReadCallback), lengthBytes);
+				}
+				catch { }
+
+				Thread.Sleep(2000);
+			}
+
+			Console.WriteLine("Connect succeed");
 		}
 	}
 }

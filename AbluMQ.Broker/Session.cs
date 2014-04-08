@@ -9,17 +9,17 @@ using AbluMQ.ClientLib;
 
 namespace AbluMQ.Broker
 {
-	public delegate void ReceiveMessageDelegate(string name, Message message);
-	public delegate void LoseConnectionDelegate(string name, string innerName);
+	internal delegate void ReceiveMessageDelegate(string name, Message message);
+	internal delegate void LoseConnectionDelegate(string name, string innerName);
 
-	public class Session
+	internal class Session
 	{
-		public string Name { get; private set; }
-		public string InnerName { get; private set; }
-		public SessionType Type { get; private set; }
-		public string CurrentSessionId { get; set; }
-		public event ReceiveMessageDelegate OnReceiveMessage;
-		public event LoseConnectionDelegate OnLoseConnection;
+		internal string Name { get; private set; }
+		internal string InnerName { get; private set; }
+		internal SessionType Type { get; private set; }
+		internal string CurrentSessionId { get; set; }
+		internal event ReceiveMessageDelegate OnReceiveMessage;
+		internal event LoseConnectionDelegate OnLoseConnection;
 
 		private TcpClient m_Client;
 		private NetworkStream m_Stream;
@@ -94,14 +94,14 @@ namespace AbluMQ.Broker
 				}
 				else
 				{
-					//Client offline, notify Broker
+					//Socket closed by remote, notify Broker
 					if(OnLoseConnection != null)
 						OnLoseConnection(this.Name, this.InnerName);
 				}
 			}
 			catch
 			{
-				//Client offline, notify Broker
+				//Socket broken or connect error, notify Broker
 				if(OnLoseConnection != null)
 					OnLoseConnection(this.Name, this.InnerName);
 			}

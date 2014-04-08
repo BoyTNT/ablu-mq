@@ -12,8 +12,9 @@ namespace AbluMQ.ClientLib
 		public MessageType Type { get; set; }
 		public string Source { get; set; }
 		public string Target { get; set; }
+		public string Path { get; set; }
 		public byte[] Data { get; set; }
-		public int Timeout { get; set; }
+		public short Timeout { get; set; }
 		public string SessionId { get; set; }
 
 		public Message()
@@ -44,15 +45,25 @@ namespace AbluMQ.ClientLib
 			stream.Read(targetBytes, 0, targetBytes.Length);
 			this.Target = Encoding.UTF8.GetString(targetBytes);
 
+			//Length of path x 2
+			var pathLenBytes = new byte[2];
+			stream.Read(pathLenBytes, 0, pathLenBytes.Length);
+			short pathLen = BitConverter.ToInt16(pathLenBytes, 0);
+
+			//Path x N
+			var pathBytes = new byte[pathLen];
+			stream.Read(pathBytes, 0, pathBytes.Length);
+			this.Path = Encoding.UTF8.GetString(pathBytes);
+
 			//SessionID x 32
 			var sessionBytes = new byte[32];
 			stream.Read(sessionBytes, 0, sessionBytes.Length);
 			this.SessionId = Encoding.UTF8.GetString(sessionBytes);
 
-			//Overtime x 4
-			var timeoutBytes = new byte[4];
+			//Overtime x 2
+			var timeoutBytes = new byte[2];
 			stream.Read(timeoutBytes, 0, timeoutBytes.Length);
-			this.Timeout = BitConverter.ToInt32(timeoutBytes, 0);
+			this.Timeout = BitConverter.ToInt16(timeoutBytes, 0);
 
 			//Length of Data x 4
 			var dataLenBytes = new byte[4];
@@ -78,6 +89,9 @@ namespace AbluMQ.ClientLib
 				if(string.IsNullOrEmpty(this.SessionId))
 					this.SessionId = Guid.NewGuid().ToString("n");
 
+				if(string.IsNullOrEmpty(this.Path))
+					this.Path = string.Empty;
+
 				//Compute length of the message
 				int messageLength = 0;
 				messageLength += 1;			//Type
@@ -85,8 +99,10 @@ namespace AbluMQ.ClientLib
 				messageLength += Encoding.UTF8.GetByteCount(this.Source);		//Source
 				messageLength += 1;			//Length of target
 				messageLength += Encoding.UTF8.GetByteCount(this.Target);		//Target
+				messageLength += 2;			//Length of path
+				messageLength += Encoding.UTF8.GetByteCount(this.Path);			//Path
 				messageLength += 32;		//SessionID
-				messageLength += 4;			//Overtime
+				messageLength += 2;			//Overtime
 				messageLength += 4;			//Length of data
 				messageLength += this.Data == null ? 0 : this.Data.Length;
 
@@ -107,6 +123,15 @@ namespace AbluMQ.ClientLib
 				var toBytes = Encoding.UTF8.GetBytes(this.Target);
 				stream.WriteByte((byte)toBytes.Length);
 				stream.Write(toBytes, 0, toBytes.Length);
+
+				//Length of path
+				short pathLen = (short)Encoding.UTF8.GetByteCount(this.Path);
+				var pathLenBytes = BitConverter.GetBytes(pathLen);
+				stream.Write(pathLenBytes, 0, pathLenBytes.Length);
+
+				//Path
+				var pathBytes = Encoding.UTF8.GetBytes(this.Path);
+				stream.Write(pathBytes, 0, pathBytes.Length);
 
 				//SessionID
 				var sessionBytes = Encoding.UTF8.GetBytes(this.SessionId);
