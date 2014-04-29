@@ -92,71 +92,60 @@ namespace AbluMQ.ClientLib
 				if(string.IsNullOrEmpty(this.Path))
 					this.Path = string.Empty;
 
-				//Compute length of the message
-				int messageLength = 0;
-				messageLength += 1;			//Type
-				messageLength += 1;			//Length of source
-				messageLength += Encoding.UTF8.GetByteCount(this.Source);		//Source
-				messageLength += 1;			//Length of target
-				messageLength += Encoding.UTF8.GetByteCount(this.Target);		//Target
-				messageLength += 2;			//Length of path
-				messageLength += Encoding.UTF8.GetByteCount(this.Path);			//Path
-				messageLength += 32;		//SessionID
-				messageLength += 2;			//Overtime
-				messageLength += 4;			//Length of data
-				messageLength += this.Data == null ? 0 : this.Data.Length;
 
-
-				//Length of message
-				var lengthBytes = BitConverter.GetBytes(messageLength);
-				stream.Write(lengthBytes, 0, lengthBytes.Length);
+				var ms = new MemoryStream();
 
 				//Type
-				stream.WriteByte((byte)this.Type);
+				ms.WriteByte((byte)this.Type);
 
 				//Source
 				var fromBytes = Encoding.UTF8.GetBytes(this.Source);
-				stream.WriteByte((byte)fromBytes.Length);
-				stream.Write(fromBytes, 0, fromBytes.Length);
+				ms.WriteByte((byte)fromBytes.Length);
+				ms.Write(fromBytes, 0, fromBytes.Length);
 
 				//Target
 				var toBytes = Encoding.UTF8.GetBytes(this.Target);
-				stream.WriteByte((byte)toBytes.Length);
-				stream.Write(toBytes, 0, toBytes.Length);
+				ms.WriteByte((byte)toBytes.Length);
+				ms.Write(toBytes, 0, toBytes.Length);
 
 				//Length of path
 				short pathLen = (short)Encoding.UTF8.GetByteCount(this.Path);
 				var pathLenBytes = BitConverter.GetBytes(pathLen);
-				stream.Write(pathLenBytes, 0, pathLenBytes.Length);
+				ms.Write(pathLenBytes, 0, pathLenBytes.Length);
 
 				//Path
 				var pathBytes = Encoding.UTF8.GetBytes(this.Path);
-				stream.Write(pathBytes, 0, pathBytes.Length);
+				ms.Write(pathBytes, 0, pathBytes.Length);
 
 				//SessionID
 				var sessionBytes = Encoding.UTF8.GetBytes(this.SessionId);
-				stream.Write(sessionBytes, 0, sessionBytes.Length);
+				ms.Write(sessionBytes, 0, sessionBytes.Length);
 
 				//Overtime
 				var timeoutBytes = BitConverter.GetBytes(this.Timeout);
-				stream.Write(timeoutBytes, 0, timeoutBytes.Length);
+				ms.Write(timeoutBytes, 0, timeoutBytes.Length);
 
 
 				if(this.Data != null)
 				{
 					//Length of data
 					var dataLenBytes = BitConverter.GetBytes(this.Data.Length);
-					stream.Write(dataLenBytes, 0, dataLenBytes.Length);
+					ms.Write(dataLenBytes, 0, dataLenBytes.Length);
 
 					//Data
-					stream.Write(this.Data, 0, this.Data.Length);
+					ms.Write(this.Data, 0, this.Data.Length);
 				}
 				else
 				{
 					//Length of data
 					var dataLenBytes = BitConverter.GetBytes(0);
-					stream.Write(dataLenBytes, 0, dataLenBytes.Length);
+					ms.Write(dataLenBytes, 0, dataLenBytes.Length);
 				}
+
+				//Compute total length and send message to stream
+				var lengthBytes = BitConverter.GetBytes((int)ms.Length);
+				stream.Write(lengthBytes, 0, lengthBytes.Length);
+				stream.Write(ms.ToArray(), 0, (int)ms.Length);
 			}
 			catch { }
 		}
