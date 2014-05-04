@@ -79,22 +79,38 @@ namespace AbluMQ.ClientLib
 		/// </summary>
 		/// <param name="target"></param>
 		/// <param name="data"></param>
-		/// <returns></returns>
-		public byte[] Request(string target, byte[] data)
-		{
-			return Request(target, data, 30);
-		}
-
-		/// <summary>
-		/// Send a request and wait for reply
-		/// </summary>
-		/// <param name="target"></param>
-		/// <param name="data"></param>
 		/// <param name="timeout"></param>
 		/// <returns></returns>
-		public byte[] Request(string target, byte[] data, int timeout)
+		public byte[] Request(string target, byte[] data, short timeout = 30)
 		{
-			throw new NotImplementedException();
+			byte[] response = null;
+
+			try
+			{
+				//Send request
+				var message = new Message();
+				message.Type = MessageType.Request;
+				message.Source = this.Name;
+				message.Target = target;
+				message.Data = data;
+				message.Timeout = timeout;
+				message.WriteTo(m_Stream);
+
+				//Wait for reply
+				var reply = Message.Read(m_Stream);
+				if(reply.Type == MessageType.Reply)
+				{
+					response = reply.Data;
+				}
+				else if(reply.Type == MessageType.Error)
+				{
+					string reason = Encoding.UTF8.GetString(reply.Data);
+					throw new Exception(reason);
+				}
+			}
+			catch { }
+
+			return response;
 		}
 	}
 }

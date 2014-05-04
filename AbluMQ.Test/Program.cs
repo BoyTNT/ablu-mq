@@ -47,7 +47,7 @@ namespace AbluMQ.Test
 			}
 			catch(Exception ex)
 			{
-				Console.WriteLine(ex.Message);
+				Console.WriteLine(ex);
 			}
 		}
 
@@ -98,8 +98,15 @@ namespace AbluMQ.Test
 			var watch = new Stopwatch();
 			watch.Start();
 
+			/*
 			for(int i = 0;i < 1000;++i)
 				sender.Notify(target, Encoding.UTF8.GetBytes(i.ToString()));
+			*/
+			var response = sender.Request(target, Encoding.UTF8.GetBytes("Hello World"), 1);
+			if(response != null)
+				Console.WriteLine(Encoding.UTF8.GetString(response));
+			else
+				Console.WriteLine("Overtime");
 
 			watch.Stop();
 			Console.WriteLine("{0} ms", watch.ElapsedMilliseconds);
@@ -135,6 +142,9 @@ namespace AbluMQ.Test
 		{
 			var message = e.Message;
 			Console.WriteLine("{0} =={2}==> {1}: {3}", message.Source, message.Target, message.Type, Encoding.UTF8.GetString(message.Data));
+
+			if(message.Type == MessageType.Request)
+				e.Reply(Encoding.UTF8.GetBytes("Reply for Hello World"));
 		}
 	}
 }

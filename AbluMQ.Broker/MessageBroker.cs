@@ -192,38 +192,29 @@ namespace AbluMQ.Broker
 						//Dispatch it
 						switch(message.Type)
 						{
-							//Notification
 							case MessageType.Notify:
-								//If target exists, deliver it
-								if(m_Endpoints.ContainsKey(message.Target))
-								{
-									m_Endpoints[message.Target].WriteMessage(message);
-								}
-								//Deliver it to other Brokers
-								else
-								{
-									//Avoid loop
-									if(!message.Path.Contains("/" + m_Name))
-									{
-										//Add route path
-										message.Path += "/" + this.m_Name;
+								//deliver it directly
+								DeliverMessage(message);
+								break;
 
-										//To parent
-										if(m_Client.Connected)
-										{
-											lock(m_Client)
-											{
-												message.WriteTo(m_ClientStream);
-											}
-										}
-
-										//To children
-										foreach(var broker in m_Brokers.Values)
-										{
-											broker.WriteMessage(message);
-										}
-									}
+							case MessageType.Request:
+								//Save as pending requests and deliver message
+								if(m_Endpoints.ContainsKey(message.Source))
+								{
+									m_Endpoints[message.Source].CurrentSessionId = message.SessionId;
+									m_PendingRequests[message.Source] = DateTime.Now.AddSeconds(message.Timeout);
 								}
+								DeliverMessage(message);
+								break;
+
+							case MessageType.Reply:
+								if(m_Endpoints.ContainsKey(message.Target) && m_Endpoints[message.Target].CurrentSessionId == message.SessionId)
+								{
+									m_Endpoints[message.Target].CurrentSessionId = string.Empty;
+									DateTime value = DateTime.Now;
+									m_PendingRequests.TryRemove(message.Target, out value);
+								}
+								DeliverMessage(message);
 								break;
 
 							//Otherwise, drop it
@@ -238,6 +229,40 @@ namespace AbluMQ.Broker
 			}
 		}
 
+		private void DeliverMessage(Message message)
+		{
+			//If target exists, deliver it
+			if(m_Endpoints.ContainsKey(message.Target))
+			{
+				m_Endpoints[message.Target].WriteMessage(message);
+			}
+			//Deliver it to other Brokers
+			else
+			{
+				//Avoid loop
+				if(!message.Path.Contains("/" + m_Name))
+				{
+					//Add route path
+					message.Path += "/" + this.m_Name;
+
+					//To parent
+					if(m_Client.Connected)
+					{
+						lock(m_Client)
+						{
+							message.WriteTo(m_ClientStream);
+						}
+					}
+
+					//To children
+					foreach(var broker in m_Brokers.Values)
+					{
+						broker.WriteMessage(message);
+					}
+				}
+			}
+		}
+
 		/// <summary>
 		/// Thread for auto reply overdue requests
 		/// </summary>
@@ -245,7 +270,34 @@ namespace AbluMQ.Broker
 		{
 			while(m_Running)
 			{
-				Thread.Sleep(1000);
+				foreach(string item in m_PendingRequests.Keys)
+				{
+					if(!m_Running)
+						break;
+
+					//超时的自动发回复消息
+					if(m_PendingRequests[item] < DateTime.Now && m_Endpoints.ContainsKey(item))
+					{
+						Console.WriteLine("Request from {0} overdue", item);
+
+						var autoReply = new Message();
+						autoReply.Type = MessageType.Error;
+						autoReply.Source = "[BROKER]";
+						autoReply.Target = item;
+						autoReply.SessionId = m_Endpoints[item].CurrentSessionId;
+						autoReply.Data = Encoding.UTF8.GetBytes("OVERTIME");
+
+						DateTime value = DateTime.Now;
+						m_PendingRequests.TryRemove(item, out value);
+
+						lock(m_Endpoints[item])
+						{
+							m_Endpoints[item].WriteMessage(autoReply);
+						}
+					}
+				}
+
+				Thread.Sleep(500);
 			}
 		}
 

@@ -23,6 +23,18 @@ namespace AbluMQ.ClientLib
 		/// <param name="data"></param>
 		public void Reply(byte[] data)
 		{
+			try
+			{
+				var reply = new Message();
+				reply.Type = MessageType.Reply;
+				reply.Source = this.Message.Target;
+				reply.Target = this.Message.Source;
+				reply.SessionId = this.Message.SessionId;
+				reply.Data = data;
+
+				reply.WriteTo(m_Stream);
+			}
+			catch { }
 		}
 	}
 }
